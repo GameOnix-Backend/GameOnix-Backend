@@ -297,7 +297,15 @@ async function handleAdminTools(req, res) {
     return res.status(400).json({ error: error.message });
   }
 
-  if (req.method === "POST" && !["send", "send-password-reset-link"].includes(actionBody?.action)) {
+  if (
+    req.method === "POST" &&
+    ![
+      "send",
+      "send-password-reset-link",
+      "update-game-request",
+      "delete-game-request",
+    ].includes(actionBody?.action)
+  ) {
     return res.status(400).json({ error: "Unsupported admin action." });
   }
 
@@ -345,6 +353,16 @@ async function handleAdminTools(req, res) {
           gameTitle: String(notification.details.gameTitle || ""),
           platform: String(notification.details.platform || ""),
           details: String(notification.details.details || ""),
+          status: ["pending", "accepted", "rejected"].includes(
+            notification.details.status
+          )
+            ? notification.details.status
+            : "pending",
+          reply: String(notification.details.reply || ""),
+          statusUpdatedAt: String(notification.details.statusUpdatedAt || ""),
+          notificationSentAt: String(
+            notification.details.notificationSentAt || ""
+          ),
         }))
         .filter(
           (request) =>
