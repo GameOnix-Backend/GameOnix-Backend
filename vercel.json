@@ -1,7 +1,14 @@
+
 {
   "functions": {
     "api/**/*.js": {
       "maxDuration": 10
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/auth/comments",
+      "destination": "/api/auth/me?reviews=public"
+    }
+  ]
 }

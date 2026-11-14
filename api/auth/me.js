@@ -4,12 +4,15 @@ import jwt from "jsonwebtoken";
 import { getSession, clearSession } from "../../lib/auth.js";
 import {
   deleteUser,
+  getBlockedReviewUsers,
   getReviews,
   getUsers,
   moderateReview,
   publicUser,
+  setReviewBlock,
   updateUser,
 } from "../../lib/googleSheets.js";
+import { handlePublicReviews } from "../../lib/reviewsApi.js";
 import {
   setCors,
   handleOptions,
@@ -151,6 +154,8 @@ function validateUserUpdates(rawUpdates) {
   return updates;
 }
 
+const REVIEW_USER_ACTIONS = ["block", "unblock"];
+
 async function handleReviewsAdmin(req, res) {
   if (!["GET", "POST"].includes(req.method)) {
     return methodNotAllowed(res, ["GET", "POST", "OPTIONS"]);
@@ -159,16 +164,35 @@ async function handleReviewsAdmin(req, res) {
   if (req.method === "GET") {
     return res.status(200).json({
       reviews: await getReviews({ includeHidden: true }),
+      blocked: await getBlockedReviewUsers(),
     });
   }
 
   const body = getJsonBody(req);
   try {
     const username = normalizeRequiredText(body.username, "Username", 24);
-    const reviewId = normalizeRequiredText(body.reviewId, "Review id", 64);
     const action = normalizeRequiredText(body.action, "Action", 16).toLowerCase();
 
-    const result = await moderateReview({ username, reviewId, action });
+    if (REVIEW_USER_ACTIONS.includes(action)) {
+      const blocked = await setReviewBlock({
+        username,
+        blocked: action === "block",
+      });
+
+      return res.status(200).json({ blocked });
+    }
+
+    const reviewId = normalizeRequiredText(body.reviewId, "Review id", 64);
+
+    const result = await moderateReview({
+      username,
+      reviewId,
+      action,
+      rating: body.rating,
+      comment: body.comment,
+      reply: body.reply,
+    });
+
     return res.status(200).json(result);
   } catch (error) {
     const status = Number.isInteger(error.status) ? error.status : 400;
@@ -447,6 +471,13 @@ async function handleAdminTools(req, res) {
 export default async function handler(req, res) {
   setCors(req, res);
   if (handleOptions(req, res)) return;
+
+  // Public reviews live on this function because the Hobby plan allows at most
+  // 12 serverless functions per deployment. `/api/auth/comments` is rewritten
+  // to `?reviews=public` in vercel.json.
+  if (req.query?.reviews === "public") {
+    return handlePublicReviews(req, res);
+  }
 
   if (req.query?.admin === "tools") {
     if (!["GET", "POST"].includes(req.method)) {
