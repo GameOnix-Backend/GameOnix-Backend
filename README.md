@@ -8,7 +8,7 @@ This is a standalone Vercel serverless backend. It does not contain your React f
 - `POST /api/auth/login` — sign in with email or username
 - `GET /api/auth/me` — return the current signed-in user
 - `GET /api/auth/me?admin=tools` — verify Publisher access to the existing Admin Tools
-- `POST /api/auth/me?admin=tools` — send a private notification or password reset link through the wallet-notifications service
+- `POST /api/auth/me?admin=tools` — send a private notification, password reset link, or game-request decision through the wallet-notifications service
 - `POST /api/auth/logout` — clear the session cookie
 - `POST /api/auth/forgot-password` — send a password reset code; the admin API can request a secure reset link
 - `POST /api/auth/reset-password` — reset using either the emailed code or secure link

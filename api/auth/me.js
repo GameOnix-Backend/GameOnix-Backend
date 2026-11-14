@@ -363,6 +363,12 @@ async function handleAdminTools(req, res) {
           notificationSentAt: String(
             notification.details.notificationSentAt || ""
           ),
+          emailSentAt: String(
+            notification.details.emailSentAt ||
+              (!Object.hasOwn(notification.details, "emailSentAt")
+                ? notification.details.notificationSentAt || ""
+                : "")
+          ),
         }))
         .filter(
           (request) =>
@@ -385,14 +391,21 @@ async function handleAdminTools(req, res) {
     });
   }
 
-  return res.status(200).json({
+  const actionResponse = {
     success: data.success === true,
     message:
       data.message ||
       (actionBody.action === "send"
         ? "The private notification was sent."
         : "If an active account uses that email, a secure reset link was sent."),
-  });
+  };
+  if (actionBody.action === "update-game-request") {
+    actionResponse.notificationSentAt = String(
+      data.notificationSentAt || ""
+    );
+    actionResponse.emailSentAt = String(data.emailSentAt || "");
+  }
+  return res.status(200).json(actionResponse);
 }
 
 export default async function handler(req, res) {
