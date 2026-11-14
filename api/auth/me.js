@@ -42,6 +42,17 @@ const USER_EDITABLE_FIELDS = new Set([
 ]);
 const WALLET_ADMIN_ACTIONS_URL =
   "https://gameonixfav.vercel.app/api/auth/wallet-notifications";
+const WALLET_PURCHASE_ADMIN_URL =
+  "https://gameonixfav.vercel.app/api/auth/wallet-purchase";
+const ADMIN_TOOL_RESOURCES = new Set(["game-requests", "purchase-requests"]);
+const ADMIN_TOOL_ACTIONS = new Set([
+  "send",
+  "send-password-reset-link",
+  "update-game-request",
+  "delete-game-request",
+  "approve-purchase-request",
+  "reject-purchase-request",
+]);
 
 function isValidUsersAdminToken(req) {
   const expected = process.env.GAMEONIX_USERS_ADMIN_TOKEN?.trim();
@@ -523,7 +534,7 @@ async function handleAdminTools(req, res) {
   res.setHeader("Cache-Control", "private, no-store, max-age=0");
 
   const resource = req.method === "GET" ? req.query?.resource : undefined;
-  if (resource !== undefined && resource !== "game-requests") {
+  if (resource !== undefined && !ADMIN_TOOL_RESOURCES.has(resource)) {
     return res.status(400).json({ error: "Unsupported admin tools resource." });
   }
 
@@ -559,18 +570,22 @@ async function handleAdminTools(req, res) {
 
   if (
     req.method === "POST" &&
-    ![
-      "send",
-      "send-password-reset-link",
-      "update-game-request",
-      "delete-game-request",
-    ].includes(actionBody?.action)
+    !ADMIN_TOOL_ACTIONS.has(actionBody?.action)
   ) {
     return res.status(400).json({ error: "Unsupported admin action." });
   }
 
+  // Product purchase requests live in the wallet purchase function, everything
+  // else is proxied to the wallet notifications function.
+  const upstreamUrl =
+    resource === "purchase-requests" ||
+    actionBody?.action === "approve-purchase-request" ||
+    actionBody?.action === "reject-purchase-request"
+      ? WALLET_PURCHASE_ADMIN_URL
+      : WALLET_ADMIN_ACTIONS_URL;
+
   const token = createAdminToolsToken(adminUsername);
-  const response = await fetch(WALLET_ADMIN_ACTIONS_URL, {
+  const response = await fetch(upstreamUrl, {
     method: req.method,
     headers: {
       Accept: "application/json",
@@ -645,25 +660,50 @@ async function handleAdminTools(req, res) {
       });
     }
 
+    if (resource === "purchase-requests") {
+      if (data.success !== true || !Array.isArray(data.requests)) {
+        return res
+          .status(502)
+          .json({ error: "Unable to load product requests." });
+      }
+
+      return res.status(200).json({
+        ready: true,
+        canSend: true,
+        purchaseRequests: data.requests,
+      });
+    }
+
     return res.status(200).json({
       ready: true,
       canSend: data.canSend === true,
     });
   }
 
+  const fallbackMessages = {
+    send: "The private notification was sent.",
+    "send-password-reset-link":
+      "If an active account uses that email, a secure reset link was sent.",
+    "update-game-request": "The game request decision was saved.",
+    "delete-game-request": "The game request was deleted.",
+    "approve-purchase-request": "The product request was approved.",
+    "reject-purchase-request": "The product request was rejected.",
+  };
   const actionResponse = {
     success: data.success === true,
     message:
       data.message ||
-      (actionBody.action === "send"
-        ? "The private notification was sent."
-        : "If an active account uses that email, a secure reset link was sent."),
+      fallbackMessages[actionBody.action] ||
+      "The admin action was completed.",
   };
   if (actionBody.action === "update-game-request") {
     actionResponse.notificationSentAt = String(
       data.notificationSentAt || ""
     );
     actionResponse.emailSentAt = String(data.emailSentAt || "");
+  }
+  if (data.status !== undefined) {
+    actionResponse.status = String(data.status);
   }
   return res.status(200).json(actionResponse);
 }
