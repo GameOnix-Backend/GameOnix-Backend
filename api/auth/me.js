@@ -4,7 +4,9 @@ import jwt from "jsonwebtoken";
 import { getSession, clearSession } from "../../lib/auth.js";
 import {
   deleteUser,
+  getReviews,
   getUsers,
+  moderateReview,
   publicUser,
   updateUser,
 } from "../../lib/googleSheets.js";
@@ -149,6 +151,31 @@ function validateUserUpdates(rawUpdates) {
   return updates;
 }
 
+async function handleReviewsAdmin(req, res) {
+  if (!["GET", "POST"].includes(req.method)) {
+    return methodNotAllowed(res, ["GET", "POST", "OPTIONS"]);
+  }
+
+  if (req.method === "GET") {
+    return res.status(200).json({
+      reviews: await getReviews({ includeHidden: true }),
+    });
+  }
+
+  const body = getJsonBody(req);
+  try {
+    const username = normalizeRequiredText(body.username, "Username", 24);
+    const reviewId = normalizeRequiredText(body.reviewId, "Review id", 64);
+    const action = normalizeRequiredText(body.action, "Action", 16).toLowerCase();
+
+    const result = await moderateReview({ username, reviewId, action });
+    return res.status(200).json(result);
+  } catch (error) {
+    const status = Number.isInteger(error.status) ? error.status : 400;
+    return res.status(status).json({ error: error.message });
+  }
+}
+
 async function handleUsersAdmin(req, res) {
   const adminToken = process.env.GAMEONIX_USERS_ADMIN_TOKEN?.trim();
   if (!adminToken || adminToken.length < 32) {
@@ -158,6 +185,15 @@ async function handleUsersAdmin(req, res) {
   }
   if (!isValidUsersAdminToken(req)) {
     return res.status(401).json({ error: "The admin key is invalid." });
+  }
+
+  const resource = req.query?.resource;
+  if (resource !== undefined) {
+    if (resource !== "reviews") {
+      return res.status(400).json({ error: "Unsupported user management resource." });
+    }
+
+    return handleReviewsAdmin(req, res);
   }
 
   if (req.method === "GET") {
