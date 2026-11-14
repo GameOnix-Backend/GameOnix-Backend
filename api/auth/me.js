@@ -2,7 +2,10 @@
 import { timingSafeEqual } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { getSession, clearSession } from "../../lib/auth.js";
+import bcrypt from "bcryptjs";
 import {
+  adjustWalletBalance,
+  appendUser,
   deleteUser,
   getBlockedReviewUsers,
   getReviews,
@@ -12,7 +15,12 @@ import {
   setReviewBlock,
   updateUser,
 } from "../../lib/googleSheets.js";
+import { uploadAvatarImage } from "../../lib/avatars.js";
+import { sendAccountCreatedEmail } from "../../lib/mailer.js";
 import { handlePublicReviews } from "../../lib/reviewsApi.js";
+
+const DEFAULT_AVATAR =
+  "https://raw.githubusercontent.com/mhdpstudio/GameOnix-Data-All/main/0.png";
 import {
   setCors,
   handleOptions,
@@ -67,6 +75,7 @@ function adminUser(user) {
   return {
     ...publicUser(user),
     avatar: user.avatar || "",
+    wallet: Number(user.wallet || 0),
     status: String(user.status || "active").trim().toLowerCase(),
     pending_email: user.pending_email || "",
   };
@@ -116,6 +125,18 @@ function validateUserUpdates(rawUpdates) {
 
   if (Object.hasOwn(rawUpdates, "theme")) {
     updates.theme = normalizeRequiredText(rawUpdates.theme, "Theme", 32);
+  }
+
+  if (Object.hasOwn(rawUpdates, "wallet")) {
+    const wallet = Number(rawUpdates.wallet);
+
+    if (!Number.isFinite(wallet) || wallet < 0 || wallet > 10_000_000) {
+      throw new Error(
+        "Wallet balance must be a number between 0 and 10,000,000."
+      );
+    }
+
+    updates.wallet = Math.round((wallet + Number.EPSILON) * 100) / 100;
   }
 
   if (Object.hasOwn(rawUpdates, "status")) {
@@ -200,6 +221,162 @@ async function handleReviewsAdmin(req, res) {
   }
 }
 
+async function handleCreateUser(req, res, body) {
+  let details;
+
+  try {
+    const username = normalizeRequiredText(body.username, "Username", 24);
+    if (username.length < 3 || !/^[a-zA-Z0-9_.-]+$/.test(username)) {
+      throw new Error(
+        "Username must be 3–24 characters and use only letters, numbers, dots, underscores, or hyphens."
+      );
+    }
+
+    const email = normalizeRequiredText(body.email, "Email", 254).toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error("Enter a valid email address.");
+    }
+
+    const name = normalizeRequiredText(body.name, "Display name", 80);
+    const password = String(body.password || "");
+
+    if (password.length < 8 || password.length > 72) {
+      throw new Error("Password must be between 8 and 72 characters.");
+    }
+
+    const walletValue =
+      body.wallet === undefined || body.wallet === "" ? 0 : Number(body.wallet);
+
+    if (!Number.isFinite(walletValue) || walletValue < 0 || walletValue > 10_000_000) {
+      throw new Error("Starting balance must be a number between 0 and 10,000,000.");
+    }
+
+    const status = String(body.status || "active").trim().toLowerCase();
+    if (!["active", "pending", "banned"].includes(status)) {
+      throw new Error("Status must be active, pending, or banned.");
+    }
+
+    details = {
+      username,
+      email,
+      name,
+      password,
+      wallet: Math.round((walletValue + Number.EPSILON) * 100) / 100,
+      status,
+      sendEmail: body.sendEmail !== false,
+    };
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  const users = await getUsers();
+  const duplicateUsername = users.some(
+    (user) =>
+      String(user.username || "").trim().toLowerCase() ===
+      details.username.toLowerCase()
+  );
+  const duplicateEmail = users.some(
+    (user) =>
+      String(user.email || "").trim().toLowerCase() === details.email
+  );
+
+  if (duplicateUsername || duplicateEmail) {
+    return res.status(409).json({
+      error: duplicateUsername
+        ? "That username is already in use."
+        : "That email is already in use.",
+    });
+  }
+
+  let avatar = String(body.avatar || "").trim();
+
+  if (typeof body.imageData === "string" && body.imageData.trim()) {
+    try {
+      avatar = await uploadAvatarImage({
+        imageData: body.imageData.trim(),
+        mimeType: body.mimeType,
+        username: details.username,
+      });
+    } catch (uploadError) {
+      return res
+        .status(uploadError.status || 500)
+        .json({ error: uploadError.message });
+    }
+  }
+
+  await appendUser({
+    username: details.username,
+    password_hash: await bcrypt.hash(details.password, 12),
+    email: details.email,
+    name: details.name,
+    created_at: new Date().toISOString(),
+    comments: JSON.stringify([]),
+    likes: JSON.stringify([]),
+    favorites: JSON.stringify([]),
+    theme: "dark",
+    avatar: avatar || DEFAULT_AVATAR,
+    status: details.status,
+    wallet: details.wallet || "",
+  });
+
+  const created = (await getUsers()).find(
+    (user) =>
+      String(user.username || "").trim().toLowerCase() ===
+      details.username.toLowerCase()
+  );
+
+  let emailSent = false;
+  let emailError = "";
+
+  if (details.sendEmail) {
+    try {
+      await sendAccountCreatedEmail({
+        to: details.email,
+        name: details.name,
+        username: details.username,
+        password: details.password,
+      });
+      emailSent = true;
+    } catch (error) {
+      emailError = error.message;
+      console.error("Account welcome email failed:", error.message);
+    }
+  }
+
+  return res.status(201).json({
+    user: created ? adminUser(created) : null,
+    emailSent,
+    emailError,
+  });
+}
+
+async function handleAdjustWallet(req, res, body) {
+  try {
+    const identifier = normalizeRequiredText(
+      body.identifier,
+      "Username or email",
+      254
+    );
+    const amount = Number(body.amount);
+
+    if (!Number.isFinite(amount) || amount === 0) {
+      throw new Error("Enter an amount other than zero.");
+    }
+
+    const result = await adjustWalletBalance({
+      identifier,
+      amount,
+      note: body.note,
+      adjustedBy: body.adjustedBy || "Publisher",
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    const status = Number.isInteger(error.status) ? error.status : 400;
+    return res.status(status).json({ error: error.message });
+  }
+}
+
 async function handleUsersAdmin(req, res) {
   const adminToken = process.env.GAMEONIX_USERS_ADMIN_TOKEN?.trim();
   if (!adminToken || adminToken.length < 32) {
@@ -218,6 +395,23 @@ async function handleUsersAdmin(req, res) {
     }
 
     return handleReviewsAdmin(req, res);
+  }
+
+  if (req.method === "POST") {
+    const body = getJsonBody(req);
+    const action = String(body.action || "").trim().toLowerCase();
+
+    if (action === "create-user") {
+      return handleCreateUser(req, res, body);
+    }
+
+    if (action === "adjust-wallet") {
+      return handleAdjustWallet(req, res, body);
+    }
+
+    return res
+      .status(400)
+      .json({ error: "Unsupported user management action." });
   }
 
   if (req.method === "GET") {
@@ -246,7 +440,13 @@ async function handleUsersAdmin(req, res) {
   }
 
   if (req.method !== "PATCH") {
-    return methodNotAllowed(res, ["GET", "PATCH", "DELETE", "OPTIONS"]);
+    return methodNotAllowed(res, [
+      "GET",
+      "POST",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ]);
   }
 
   const body = getJsonBody(req);
