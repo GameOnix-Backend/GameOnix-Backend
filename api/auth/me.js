@@ -44,7 +44,11 @@ const WALLET_ADMIN_ACTIONS_URL =
   "https://gameonixfav.vercel.app/api/auth/wallet-notifications";
 const WALLET_PURCHASE_ADMIN_URL =
   "https://gameonixfav.vercel.app/api/auth/wallet-purchase";
-const ADMIN_TOOL_RESOURCES = new Set(["game-requests", "purchase-requests"]);
+const ADMIN_TOOL_RESOURCES = new Set([
+  "game-requests",
+  "purchase-requests",
+  "support-reports",
+]);
 const ADMIN_TOOL_ACTIONS = new Set([
   "send",
   "send-password-reset-link",
@@ -582,7 +586,9 @@ async function handleAdminTools(req, res) {
     actionBody?.action === "approve-purchase-request" ||
     actionBody?.action === "reject-purchase-request"
       ? WALLET_PURCHASE_ADMIN_URL
-      : WALLET_ADMIN_ACTIONS_URL;
+      : resource === "support-reports"
+        ? `${WALLET_ADMIN_ACTIONS_URL}?admin=reports`
+        : WALLET_ADMIN_ACTIONS_URL;
 
   const token = createAdminToolsToken(adminUsername);
   const response = await fetch(upstreamUrl, {
@@ -604,6 +610,30 @@ async function handleAdminTools(req, res) {
   }
 
   if (req.method === "GET") {
+    if (resource === "support-reports") {
+      if (data.canSend !== true || !Array.isArray(data.reports)) {
+        return res.status(403).json({ error: "Admin access is required." });
+      }
+      const reports = data.reports
+        .filter((report) =>
+          report &&
+          ["support_request", "bug_report"].includes(report.type) &&
+          report.details &&
+          typeof report.details === "object"
+        )
+        .map((report) => ({
+          id: String(report.id || ""),
+          username: String(report.username || ""),
+          type: report.type,
+          title: String(report.title || ""),
+          message: String(report.message || ""),
+          details: report.details,
+          createdAt: String(report.createdAt || ""),
+        }))
+        .filter((report) => report.id && report.username);
+      return res.status(200).json({ ready: true, canSend: true, reports });
+    }
+
     if (resource === "game-requests") {
       if (data.canSend !== true) {
         return res.status(403).json({ error: "Admin access is required." });
