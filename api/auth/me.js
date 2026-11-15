@@ -53,6 +53,7 @@ const ADMIN_TOOL_ACTIONS = new Set([
   "send",
   "send-password-reset-link",
   "update-game-request",
+  "reply-support-report",
   "delete-game-request",
   "approve-purchase-request",
   "reject-purchase-request",
@@ -715,6 +716,7 @@ async function handleAdminTools(req, res) {
     "send-password-reset-link":
       "If an active account uses that email, a secure reset link was sent.",
     "update-game-request": "The game request decision was saved.",
+    "reply-support-report": "The support report reply was sent.",
     "delete-game-request": "The game request was deleted.",
     "approve-purchase-request": "The product request was approved.",
     "reject-purchase-request": "The product request was rejected.",
@@ -731,6 +733,10 @@ async function handleAdminTools(req, res) {
       data.notificationSentAt || ""
     );
     actionResponse.emailSentAt = String(data.emailSentAt || "");
+  }
+  if (actionBody.action === "reply-support-report") {
+    actionResponse.notificationSent = data.notificationSent === true;
+    actionResponse.emailSent = data.emailSent === true;
   }
   if (data.status !== undefined) {
     actionResponse.status = String(data.status);
