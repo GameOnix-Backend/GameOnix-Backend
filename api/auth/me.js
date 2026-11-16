@@ -55,6 +55,9 @@ const ADMIN_TOOL_ACTIONS = new Set([
   "update-game-request",
   "reply-support-report",
   "delete-support-report",
+  "update-support-ticket-status",
+  "edit-support-message",
+  "delete-support-message",
   "delete-game-request",
   "approve-purchase-request",
   "reject-purchase-request",
@@ -719,6 +722,9 @@ async function handleAdminTools(req, res) {
     "update-game-request": "The game request decision was saved.",
     "reply-support-report": "The support report reply was sent.",
     "delete-support-report": "The support report was deleted.",
+    "update-support-ticket-status": "The support ticket status was updated.",
+    "edit-support-message": "The support message was updated.",
+    "delete-support-message": "The support message was deleted.",
     "delete-game-request": "The game request was deleted.",
     "approve-purchase-request": "The product request was approved.",
     "reject-purchase-request": "The product request was rejected.",
@@ -739,6 +745,10 @@ async function handleAdminTools(req, res) {
   if (actionBody.action === "reply-support-report") {
     actionResponse.notificationSent = data.notificationSent === true;
     actionResponse.emailSent = data.emailSent === true;
+  }
+  if (actionBody.action === "update-support-ticket-status") {
+    actionResponse.notificationSent = data.notificationSent === true;
+    actionResponse.status = String(data.report?.details?.status || actionBody.status || "");
   }
   if (data.status !== undefined) {
     actionResponse.status = String(data.status);
