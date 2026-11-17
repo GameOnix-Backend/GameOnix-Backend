@@ -456,7 +456,20 @@ async function handleUsersAdmin(req, res) {
       return res.status(404).json({ error: "User not found." });
     }
 
-    await deleteUser(user.username);
+    try {
+      await deleteUser(user.username);
+    } catch (error) {
+      console.error("User deletion failed:", error?.message || error);
+      const backendMessage =
+        typeof error?.response?.data?.error?.message === "string"
+          ? error.response.data.error.message
+          : typeof error?.message === "string"
+            ? error.message
+            : "The account could not be removed from Google Sheets.";
+      return res.status(500).json({
+        error: `Could not delete this account: ${backendMessage}`,
+      });
+    }
     return res.status(200).json({ username: user.username });
   }
 
