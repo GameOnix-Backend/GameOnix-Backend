@@ -333,9 +333,8 @@ async function handleCreateUser(req, res, body) {
     }
   }
 
-  await appendUser({
+  const createdAccount = {
     username: details.username,
-    password_hash: await bcrypt.hash(details.password, 12),
     email: details.email,
     name: details.name,
     created_at: new Date().toISOString(),
@@ -346,13 +345,22 @@ async function handleCreateUser(req, res, body) {
     avatar: avatar || DEFAULT_AVATAR,
     status: details.status,
     wallet: details.wallet || "",
+  };
+
+  await appendUser({
+    ...createdAccount,
+    password_hash: await bcrypt.hash(details.password, 12),
   });
 
-  const created = (await getUsers()).find(
-    (user) =>
-      String(user.username || "").trim().toLowerCase() ===
-      details.username.toLowerCase()
-  );
+  let created = null;
+  try {
+    created = (await getUsers()).find(
+      (user) => String(user.username || "").trim().toLowerCase() === details.username.toLowerCase()
+    ) || null;
+  } catch (error) {
+    console.error("Created account readback failed:", error?.message || error);
+  }
+  const accountForResponse = created || createdAccount;
 
   let emailSent = false;
   let emailError = "";
@@ -373,7 +381,7 @@ async function handleCreateUser(req, res, body) {
   }
 
   return res.status(201).json({
-    user: created ? adminUser(created) : null,
+    user: adminUser(accountForResponse),
     emailSent,
     emailError,
   });
