@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import {
   adjustWalletBalance,
   appendUser,
+  compactUserRows,
   deleteUser,
   deleteUserBySheetRow,
   getBlockedReviewUsers,
@@ -454,6 +455,7 @@ async function handleUsersAdmin(req, res) {
   }
 
   if (req.method === "GET") {
+    await compactUserRows();
     const users = await getUsers();
     return res.status(200).json({ users: users.map(adminUser) });
   }
