@@ -503,6 +503,19 @@ async function handleUsersAdmin(req, res) {
   }
 
   const updatesToSave = { ...updates };
+  if (Object.hasOwn(updatesToSave, "favorites")) {
+    let storedFavorites = currentUser.favorites;
+    if (typeof storedFavorites === "string") {
+      try { storedFavorites = JSON.parse(storedFavorites); } catch { storedFavorites = []; }
+    }
+    const follows = Array.isArray(storedFavorites)
+      ? storedFavorites.filter((item) => typeof item === "string" && item.startsWith("follow|"))
+      : [];
+    const nextFavorites = Array.isArray(updatesToSave.favorites)
+      ? updatesToSave.favorites.filter((item) => typeof item === "string" && !item.startsWith("follow|"))
+      : [];
+    updatesToSave.favorites = JSON.stringify([...nextFavorites, ...follows]);
+  }
   if (
     String(currentUser.status || "").trim().toLowerCase() !== "active" &&
     updates.status === "active"

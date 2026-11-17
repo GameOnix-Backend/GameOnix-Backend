@@ -49,8 +49,12 @@ export default async function handler(req, res) {
 
   try {
     const body = req.method === "POST" ? getJsonBody(req) : {};
-    if (req.method === "POST" && body.event) {
-      const { slug, event } = body;
+    const queryEvent = Array.isArray(req.query?.event) ? req.query.event[0] : req.query?.event;
+    const querySlug = Array.isArray(req.query?.slug) ? req.query.slug[0] : req.query?.slug;
+    const activityEvent = body.event || queryEvent;
+    if (req.method === "POST" && activityEvent) {
+      const slug = body.slug || querySlug;
+      const event = activityEvent;
       if (!validSlug(slug) || !["view", "download"].includes(event)) return res.status(400).json({ error: "Invalid game activity event." });
       const ip = String(req.headers["x-forwarded-for"] || "unknown").split(",")[0].trim();
       const key = `${ip}:${event}:${slug.trim()}`;
@@ -111,7 +115,7 @@ export default async function handler(req, res) {
         : res.status(200).json({ favorites });
     }
 
-    const { slug, collection, addonCount } = body;
+    const { slug, collection, addonCount, operation } = body;
 
     if (
       typeof slug !== "string" ||
@@ -123,7 +127,8 @@ export default async function handler(req, res) {
 
     const normalizedSlug = slug.trim();
     if (collection === "follows") {
-      const updatedFollows = req.method === "POST"
+      const removingFollow = req.method === "DELETE" || operation === "remove";
+      const updatedFollows = !removingFollow
         ? follows.some((item) => item.slug === normalizedSlug)
           ? follows
           : [...follows, { slug: normalizedSlug, followedAt: new Date().toISOString(), addonCount: Math.max(0, Math.floor(Number(addonCount) || 0)) }]
