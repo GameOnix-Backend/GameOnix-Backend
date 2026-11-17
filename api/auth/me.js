@@ -7,6 +7,7 @@ import {
   adjustWalletBalance,
   appendUser,
   deleteUser,
+  deleteUserBySheetRow,
   getBlockedReviewUsers,
   getReviews,
   getUsers,
@@ -93,12 +94,19 @@ function createAdminToolsToken(username) {
 }
 
 function adminUser(user) {
+  const pendingEmail = String(user.pending_email || "");
+  const isMalformed =
+    !String(user.username || "").trim() &&
+    !String(user.email || "").trim() &&
+    /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(pendingEmail);
   return {
     ...publicUser(user),
     avatar: user.avatar || "",
     wallet: Number(user.wallet || 0),
     status: String(user.status || "active").trim().toLowerCase(),
-    pending_email: user.pending_email || "",
+    pending_email: isMalformed ? "" : pendingEmail,
+    is_malformed: isMalformed,
+    record_id: Number(user._sheetRow),
   };
 }
 
@@ -441,34 +449,48 @@ async function handleUsersAdmin(req, res) {
   }
 
   if (req.method === "DELETE") {
+    const body = getJsonBody(req);
+    const recordId = Number(body.recordId);
+    const users = await getUsers();
+
+    if (Number.isSafeInteger(recordId) && recordId >= 2) {
+      const user = users.find((item) => Number(item._sheetRow) === recordId);
+      if (!user) return res.status(404).json({ error: "Account row not found." });
+      const pendingHash = String(user.pending_email || "");
+      const isMalformed =
+        !String(user.username || "").trim() &&
+        !String(user.email || "").trim() &&
+        /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(pendingHash);
+      if (!isMalformed) {
+        return res.status(400).json({ error: "Row deletion is limited to malformed blank accounts with a password hash in the pending email field." });
+      }
+      try {
+        await deleteUserBySheetRow(recordId);
+      } catch (error) {
+        console.error("Malformed account deletion failed:", error?.message || error);
+        return res.status(500).json({ error: "Could not delete the malformed account row." });
+      }
+      return res.status(200).json({ record_id: recordId });
+    }
+
     let username;
     try {
-      username = normalizeRequiredText(getJsonBody(req).username, "Username", 24);
+      username = normalizeRequiredText(body.username, "Username", 24);
     } catch (error) {
       return res.status(400).json({ error: error.message });
     }
-
-    const users = await getUsers();
-    const user = users.find(
-      (item) => String(item.username || "").trim().toLowerCase() === username.toLowerCase()
-    );
-    if (!user) {
-      return res.status(404).json({ error: "User not found." });
-    }
-
+    const user = users.find((item) => String(item.username || "").trim().toLowerCase() === username.toLowerCase());
+    if (!user) return res.status(404).json({ error: "User not found." });
     try {
       await deleteUser(user.username);
     } catch (error) {
       console.error("User deletion failed:", error?.message || error);
-      const backendMessage =
-        typeof error?.response?.data?.error?.message === "string"
-          ? error.response.data.error.message
-          : typeof error?.message === "string"
-            ? error.message
-            : "The account could not be removed from Google Sheets.";
-      return res.status(500).json({
-        error: `Could not delete this account: ${backendMessage}`,
-      });
+      const backendMessage = typeof error?.response?.data?.error?.message === "string"
+        ? error.response.data.error.message
+        : typeof error?.message === "string"
+          ? error.message
+          : "The account could not be removed from Google Sheets.";
+      return res.status(500).json({ error: "Could not delete this account: " + backendMessage });
     }
     return res.status(200).json({ username: user.username });
   }
