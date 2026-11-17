@@ -347,16 +347,18 @@ async function handleCreateUser(req, res, body) {
     wallet: details.wallet || "",
   };
 
-  await appendUser({
+  const appendResult = await appendUser({
     ...createdAccount,
     password_hash: await bcrypt.hash(details.password, 12),
   });
+  if (appendResult.updatedRows !== 1) {
+    throw new Error("Google Sheets did not confirm writing the new account row.");
+  }
+  createdAccount._sheetRow = appendResult.rowNumber;
 
   let created = null;
   try {
-    created = (await getUsers()).find(
-      (user) => String(user.username || "").trim().toLowerCase() === details.username.toLowerCase()
-    ) || null;
+    created = (await getUsers()).find((user) => Number(user._sheetRow) === appendResult.rowNumber) || null;
   } catch (error) {
     console.error("Created account readback failed:", error?.message || error);
   }
