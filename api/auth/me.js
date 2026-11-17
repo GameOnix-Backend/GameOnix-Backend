@@ -51,6 +51,7 @@ const ADMIN_TOOL_RESOURCES = new Set([
 ]);
 const ADMIN_TOOL_ACTIONS = new Set([
   "send",
+  "publish-game-update",
   "send-password-reset-link",
   "update-game-request",
   "reply-support-report",
@@ -584,6 +585,29 @@ async function handleAdminTools(req, res) {
     return res.status(400).json({ error: "Unsupported admin action." });
   }
 
+  if (req.method === "POST" && actionBody?.action === "publish-game-update") {
+    if (!/^[a-f0-9]{40}$/i.test(String(actionBody.publishId || "")) ||
+        !Array.isArray(actionBody.games) || actionBody.games.length > 100) {
+      return res.status(400).json({ error: "The published game update is invalid." });
+    }
+    const users = await getUsers();
+    actionBody.games = actionBody.games.map((game) => {
+      const stored = typeof game?.slug === "string" ? game.slug.trim().toLowerCase() : "";
+      const followers = users.filter((user) => {
+        if (user.status && String(user.status).trim().toLowerCase() !== "active") return false;
+        let favorites = user.favorites;
+        if (typeof favorites === "string") {
+          try { favorites = JSON.parse(favorites); } catch { favorites = []; }
+        }
+        return Array.isArray(favorites) && favorites.some((entry) =>
+          typeof entry === "string" && entry.startsWith("follow|") &&
+          String(entry.split("|")[1] || "").trim().toLowerCase() === stored
+        );
+      }).map((user) => ({ username: String(user.username || ""), email: String(user.email || "") }));
+      return { ...game, followers };
+    });
+  }
+
   // Product purchase requests live in the wallet purchase function, everything
   // else is proxied to the wallet notifications function.
   const upstreamUrl =
@@ -604,7 +628,7 @@ async function handleAdminTools(req, res) {
       ...(actionBody ? { "Content-Type": "application/json" } : {}),
     },
     ...(actionBody ? { body: JSON.stringify(actionBody) } : {}),
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(actionBody?.action === "publish-game-update" ? 9000 : 8000),
   });
   const data = await response.json().catch(() => ({}));
 
@@ -728,6 +752,7 @@ async function handleAdminTools(req, res) {
     "delete-game-request": "The game request was deleted.",
     "approve-purchase-request": "The product request was approved.",
     "reject-purchase-request": "The product request was rejected.",
+    "publish-game-update": "Game followers were notified in GameOnix and by email.",
   };
   const actionResponse = {
     success: data.success === true,
