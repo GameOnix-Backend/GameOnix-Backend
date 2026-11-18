@@ -36,10 +36,13 @@ function splitCollections(value) {
 const validSlug = (slug) => typeof slug === "string" && /^[a-z0-9][a-z0-9-]{0,159}$/i.test(slug.trim());
 const recentEvents = new Map();
 
+import { blockIfSitePaused } from "../../lib/siteAvailability.js";
+
 export default async function handler(req, res) {
   setCors(req, res);
 
   if (handleOptions(req, res)) return;
+  if (await blockIfSitePaused(res)) return;
 
   if (!["GET", "POST", "DELETE"].includes(req.method)) {
     return methodNotAllowed(res, ["GET", "POST", "DELETE", "OPTIONS"]);

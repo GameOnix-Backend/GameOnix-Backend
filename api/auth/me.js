@@ -9,17 +9,20 @@ import {
   compactUserRows,
   deleteUser,
   deleteUserBySheetRow,
+  getSiteControl,
   getBlockedReviewUsers,
   getReviews,
   getUsers,
   moderateReview,
   publicUser,
   setReviewBlock,
+  setSiteControl,
   updateUser,
 } from "../../lib/googleSheets.js";
 import { uploadAvatarImage } from "../../lib/avatars.js";
 import { sendAccountCreatedEmail } from "../../lib/mailer.js";
 import { handlePublicReviews } from "../../lib/reviewsApi.js";
+import { blockIfSitePaused } from "../../lib/siteAvailability.js";
 
 const DEFAULT_AVATAR =
   "https://raw.githubusercontent.com/mhdpstudio/GameOnix-Data-All/main/0.png";
@@ -53,6 +56,7 @@ const ADMIN_TOOL_RESOURCES = new Set([
 ]);
 const ADMIN_TOOL_ACTIONS = new Set([
   "send",
+  "set-site-mode",
   "publish-game-update",
   "send-password-reset-link",
   "update-game-request",
@@ -680,6 +684,28 @@ async function handleAdminTools(req, res) {
         : WALLET_ADMIN_ACTIONS_URL;
 
   const token = createAdminToolsToken(adminUsername);
+
+  if (req.method === "POST" && actionBody.action === "set-site-mode") {
+    const accessUrl = new URL(WALLET_ADMIN_ACTIONS_URL);
+    accessUrl.searchParams.set("username", adminUsername);
+    const accessResponse = await fetch(accessUrl, {
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    const accessData = await accessResponse.json().catch(() => ({}));
+    if (!accessResponse.ok || accessData.canSend !== true) {
+      return res.status(403).json({ error: "Admin access is required." });
+    }
+    const mode = String(actionBody.mode || "").trim();
+    const message = typeof actionBody.message === "string" ? actionBody.message : "";
+    const siteControl = await setSiteControl({ mode, message });
+    return res.status(200).json({
+      success: true,
+      message: mode === "online" ? "The website is back online." : "The website status was updated.",
+      siteControl,
+    });
+  }
+
   const response = await fetch(upstreamUrl, {
     method: req.method,
     headers: {
@@ -793,9 +819,11 @@ async function handleAdminTools(req, res) {
       });
     }
 
+    const siteControl = data.canSend === true ? await getSiteControl() : undefined;
     return res.status(200).json({
       ready: true,
       canSend: data.canSend === true,
+      ...(siteControl ? { siteControl } : {}),
     });
   }
 
@@ -845,11 +873,16 @@ export default async function handler(req, res) {
   setCors(req, res);
   if (handleOptions(req, res)) return;
 
-  // Public reviews live on this function because the Hobby plan allows at most
-  // 12 serverless functions per deployment. `/api/auth/comments` is rewritten
-  // to `?reviews=public` in vercel.json.
-  if (req.query?.reviews === "public") {
-    return handlePublicReviews(req, res);
+  if (req.query?.siteStatus === "1") {
+    if (req.method !== "GET") return methodNotAllowed(res, ["GET", "OPTIONS"]);
+    try {
+      const siteControl = await getSiteControl();
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(200).json(siteControl);
+    } catch (error) {
+      console.error("Site status request failed:", error.message);
+      return res.status(503).json({ error: "Website status is temporarily unavailable." });
+    }
   }
 
   if (req.query?.admin === "tools") {
@@ -875,6 +908,15 @@ export default async function handler(req, res) {
         error: "Unable to process the user management request.",
       });
     }
+  }
+
+  if (await blockIfSitePaused(res)) return;
+
+  // Public reviews live on this function because the Hobby plan allows at most
+  // 12 serverless functions per deployment. `/api/auth/comments` is rewritten
+  // to `?reviews=public` in vercel.json.
+  if (req.query?.reviews === "public") {
+    return handlePublicReviews(req, res);
   }
 
   if (req.method !== "GET") {

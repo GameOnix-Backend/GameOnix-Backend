@@ -43,10 +43,13 @@ function safeEqual(a, b) {
   );
 }
 
+import { blockIfSitePaused } from "../../lib/siteAvailability.js";
+
 export default async function handler(req, res) {
   setCors(req, res);
 
   if (handleOptions(req, res)) return;
+  if (await blockIfSitePaused(res)) return;
 
   if (req.method !== "POST") {
     return methodNotAllowed(res, ["POST", "OPTIONS"]);
