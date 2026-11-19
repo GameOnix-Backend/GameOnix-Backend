@@ -923,6 +923,26 @@ export default async function handler(req, res) {
     return methodNotAllowed(res, ["GET", "OPTIONS"]);
   }
 
+  // getSession() cannot verify a cookie or bearer token without this secret.
+  // Report a configuration failure explicitly instead of masking it as a
+  // generic session lookup error.
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret || sessionSecret.length < 32) {
+    console.error("SESSION_SECRET is missing or too short.");
+    return res.status(503).json({
+      error: "Session authentication is temporarily unavailable.",
+    });
+  }
+
+  const wantsToken = req.query?.token === "true";
+  const communityTokenSecret = process.env.GAMEONIX_API_TOKEN_SECRET;
+  if (wantsToken && (!communityTokenSecret || communityTokenSecret.length < 32)) {
+    console.error("GAMEONIX_API_TOKEN_SECRET is missing or too short.");
+    return res.status(503).json({
+      error: "Community token service is temporarily unavailable.",
+    });
+  }
+
   try {
     const session = getSession(req);
 
@@ -938,25 +958,16 @@ export default async function handler(req, res) {
         String(session.username).toLowerCase()
     );
 
-    if (!user || (user.status && user.status !== "active")) {
+    if (!user || (user.status && String(user.status).trim().toLowerCase() !== "active")) {
       clearSession(res);
       return res.status(401).json({ user: null });
     }
 
     // Existing behavior remains unchanged unless token=true is requested.
-    if (req.query?.token === "true") {
-      const secret = process.env.GAMEONIX_API_TOKEN_SECRET;
-
-      if (!secret || secret.length < 32) {
-        console.error("GAMEONIX_API_TOKEN_SECRET is missing or too short.");
-        return res.status(500).json({
-          error: "Community token service is not configured.",
-        });
-      }
-
+    if (wantsToken) {
       const token = jwt.sign(
         { username: user.username },
-        secret,
+        communityTokenSecret,
         {
           algorithm: "HS256",
           expiresIn: "5m",
@@ -971,6 +982,11 @@ export default async function handler(req, res) {
     return res.status(200).json({ user: publicUser(user) });
   } catch (error) {
     console.error("Session lookup error:", error.message);
+    if (error.message?.includes("Google Sheets environment variables")) {
+      return res.status(503).json({
+        error: "Account data is temporarily unavailable.",
+      });
+    }
     return res.status(500).json({
       error: "Unable to check the current session.",
     });
