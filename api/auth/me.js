@@ -877,7 +877,8 @@ export default async function handler(req, res) {
     if (req.method !== "GET") return methodNotAllowed(res, ["GET", "OPTIONS"]);
     try {
       const siteControl = await getSiteControl();
-      res.setHeader("Cache-Control", "no-store");
+      // Let Vercel's edge cache absorb the browser's periodic status checks.
+      res.setHeader("Cache-Control", "public, s-maxage=15, stale-while-revalidate=60");
       return res.status(200).json(siteControl);
     } catch (error) {
       console.error("Site status request failed:", error.message);
