@@ -58,10 +58,12 @@ export default async function handler(req, res) {
     if (req.method === "POST" && activityEvent) {
       const slug = body.slug || querySlug;
       const event = activityEvent;
-      if (!validSlug(slug) || !["view", "download"].includes(event)) return res.status(400).json({ error: "Invalid game activity event." });
+      const validShoppingView = event === "shopping-view" && slug === "shopping";
+      const validGameEvent = validSlug(slug) && ["view", "download"].includes(event);
+      if (!validShoppingView && !validGameEvent) return res.status(400).json({ error: "Invalid activity event." });
       const ip = String(req.headers["x-forwarded-for"] || "unknown").split(",")[0].trim();
       const key = `${ip}:${event}:${slug.trim()}`;
-      const cooldown = event === "view" ? 30 * 60_000 : 60_000;
+      const cooldown = event === "view" || event === "shopping-view" ? 30 * 60_000 : 60_000;
       if (Date.now() - (recentEvents.get(key) || 0) >= cooldown) {
         await recordGameEvent(slug.trim(), event);
         recentEvents.set(key, Date.now());
@@ -70,8 +72,8 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "GET" && req.query?.analytics === "1") {
-      const [users, eventCounts] = await Promise.all([getUsers(), getGameEventCounts()]);
-      const stats = new Map([...eventCounts].map(([slug, counts]) => [slug, { ...counts, favorites: 0, follows: 0 }]));
+      const [users, eventActivity] = await Promise.all([getUsers(), getGameEventCounts()]);
+      const stats = new Map([...eventActivity.games].map(([slug, counts]) => [slug, { ...counts, favorites: 0, follows: 0 }]));
       for (const user of users) {
         const collections = splitCollections(user.favorites);
         for (const slug of collections.favorites) {
@@ -85,7 +87,7 @@ export default async function handler(req, res) {
           stats.set(follow.slug, item);
         }
       }
-      return res.status(200).json({ games: [...stats].map(([slug, counts]) => ({ slug, ...counts })) });
+      return res.status(200).json({ games: [...stats].map(([slug, counts]) => ({ slug, ...counts })), shoppingViews: eventActivity.shoppingViews });
     }
 
     const session = getSession(req);
