@@ -44,6 +44,7 @@ Set these in Vercel Project Settings → Environment Variables:
 - `GAMEONIX_API_TOKEN_SECRET`: a random secret of at least 32 characters, shared with the GameOnix-Backend Vercel project to authenticate its admin reset-link request.
 - `GAMEONIX_USERS_ADMIN_TOKEN`: a separate random secret of at least 32 characters for the Publisher's protected user-management view. Keep it private; the Publisher stores it encrypted in the local Windows user profile. The protected endpoint supports listing, editing, and deleting users; banned accounts cannot sign in. Activating a non-active account clears temporary verification, reset, and email-change credentials and expiry values.
 - `FRONTEND_URL`: exact frontend origin, without a trailing slash, e.g. `https://your-frontend.example.com`. For local development use `http://localhost:5173`.
+- `DESKTOP_APP_ORIGIN`: optional exact origin allowed for the GameOnix desktop client, normally `app://gameonix`.
 
 After setting or changing environment variables, redeploy the project.
 
