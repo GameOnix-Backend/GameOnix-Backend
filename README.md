@@ -69,6 +69,10 @@ npx vercel dev
 
 Copy `.env.example` to `.env` and fill in real values. Do not commit `.env`.
 
+## Account name policy
+
+Registration, profile edits, and Publisher user edits apply server-side name checks. Usernames reserve administrator/owner/staff-style identities and reject listed profanity or adult content. Display names also reserve `Mahmoud Pro`. Common adult-creator spellings, including `Sweetie Fox` and `Switte Fox`, are blocked. This is a focused denylist rather than a claim that every possible spelling or offensive term is covered.
+
 ## Request examples
 
 Register:

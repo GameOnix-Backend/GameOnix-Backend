@@ -9,6 +9,10 @@ import {
 } from "../../lib/googleSheets.js";
 
 import { sendVerificationEmail } from "../../lib/mailer.js";
+import {
+  validateDisplayNamePolicy,
+  validateUsernamePolicy,
+} from "../../lib/namePolicy.js";
 
 import {
   setCors,
@@ -78,6 +82,16 @@ export default async function handler(req, res) {
         error:
           "Username must be 3–30 characters and use letters, numbers, dots, underscores, or hyphens.",
       });
+    }
+
+    const usernamePolicyError = validateUsernamePolicy(cleanUsername);
+    if (usernamePolicyError) {
+      return res.status(400).json({ error: usernamePolicyError });
+    }
+
+    const namePolicyError = validateDisplayNamePolicy(cleanName);
+    if (namePolicyError) {
+      return res.status(400).json({ error: namePolicyError });
     }
 
     if (

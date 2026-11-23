@@ -15,6 +15,10 @@ import {
   methodNotAllowed,
   getJsonBody,
 } from "../../lib/http.js";
+import {
+  validateDisplayNamePolicy,
+  validateUsernamePolicy,
+} from "../../lib/namePolicy.js";
 
 function normalize(value) {
   return String(value ?? "").trim();
@@ -69,6 +73,16 @@ export default async function handler(req, res) {
         error:
           "Username can contain only English letters, numbers, and underscores.",
       });
+    }
+
+    const usernamePolicyError = validateUsernamePolicy(username);
+    if (usernamePolicyError) {
+      return res.status(400).json({ error: usernamePolicyError });
+    }
+
+    const namePolicyError = validateDisplayNamePolicy(name);
+    if (namePolicyError) {
+      return res.status(400).json({ error: namePolicyError });
     }
 
     const users = await getUsers();

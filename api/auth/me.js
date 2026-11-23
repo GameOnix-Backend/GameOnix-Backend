@@ -23,6 +23,10 @@ import { uploadAvatarImage } from "../../lib/avatars.js";
 import { sendAccountCreatedEmail } from "../../lib/mailer.js";
 import { handlePublicReviews } from "../../lib/reviewsApi.js";
 import { blockIfSitePaused } from "../../lib/siteAvailability.js";
+import {
+  validateDisplayNamePolicy,
+  validateUsernamePolicy,
+} from "../../lib/namePolicy.js";
 
 const DEFAULT_AVATAR =
   "https://raw.githubusercontent.com/mhdpstudio/GameOnix-Data-All/main/0.png";
@@ -142,6 +146,8 @@ function validateUserUpdates(rawUpdates) {
     if (username.length < 3 || !/^[a-zA-Z0-9_]+$/.test(username)) {
       throw new Error("Username must be 3–24 characters and use only letters, numbers, or underscores.");
     }
+    const policyError = validateUsernamePolicy(username);
+    if (policyError) throw new Error(policyError);
     updates.username = username;
   }
 
@@ -154,7 +160,10 @@ function validateUserUpdates(rawUpdates) {
   }
 
   if (Object.hasOwn(rawUpdates, "name")) {
-    updates.name = normalizeRequiredText(rawUpdates.name, "Name", 80);
+    const name = normalizeRequiredText(rawUpdates.name, "Name", 80);
+    const policyError = validateDisplayNamePolicy(name);
+    if (policyError) throw new Error(policyError);
+    updates.name = name;
   }
 
   if (Object.hasOwn(rawUpdates, "theme")) {
@@ -266,12 +275,17 @@ async function handleCreateUser(req, res, body) {
       );
     }
 
+    const usernamePolicyError = validateUsernamePolicy(username);
+    if (usernamePolicyError) throw new Error(usernamePolicyError);
+
     const email = normalizeRequiredText(body.email, "Email", 254).toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new Error("Enter a valid email address.");
     }
 
     const name = normalizeRequiredText(body.name, "Display name", 80);
+    const namePolicyError = validateDisplayNamePolicy(name);
+    if (namePolicyError) throw new Error(namePolicyError);
     const password = String(body.password || "");
 
     if (password.length < 8 || password.length > 72) {
