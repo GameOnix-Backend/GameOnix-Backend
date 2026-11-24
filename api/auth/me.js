@@ -23,6 +23,7 @@ import { uploadAvatarImage } from "../../lib/avatars.js";
 import { sendAccountCreatedEmail } from "../../lib/mailer.js";
 import { handlePublicReviews } from "../../lib/reviewsApi.js";
 import { blockIfSitePaused } from "../../lib/siteAvailability.js";
+import { fetchReplica } from "../../lib/serviceFetch.js";
 import {
   validateDisplayNamePolicy,
   validateUsernamePolicy,
@@ -702,7 +703,7 @@ async function handleAdminTools(req, res) {
   if (req.method === "POST" && actionBody.action === "set-site-mode") {
     const accessUrl = new URL(WALLET_ADMIN_ACTIONS_URL);
     accessUrl.searchParams.set("username", adminUsername);
-    const accessResponse = await fetch(accessUrl, {
+    const accessResponse = await fetchReplica("fav", accessUrl, {
       headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(8000),
     });
@@ -720,7 +721,7 @@ async function handleAdminTools(req, res) {
     });
   }
 
-  const response = await fetch(upstreamUrl, {
+  const response = await fetchReplica("fav", upstreamUrl, {
     method: req.method,
     headers: {
       Accept: "application/json",
