@@ -15,6 +15,7 @@ import {
   getUsers,
   moderateReview,
   publicUser,
+  recordDesktopAppVersion,
   setReviewBlock,
   setSiteControl,
   updateUser,
@@ -116,6 +117,8 @@ function adminUser(user) {
     avatar: user.avatar || "",
     wallet: Number(user.wallet || 0),
     status: String(user.status || "active").trim().toLowerCase(),
+    app_version: String(user.app_version || ""),
+    app_last_seen_at: String(user.app_last_seen_at || ""),
     pending_email: isMalformed ? "" : pendingEmail,
     is_malformed: isMalformed,
     record_id: Number(user._sheetRow),
@@ -954,6 +957,38 @@ export default async function handler(req, res) {
       return res.status(500).json({
         error: "Unable to process the user management request.",
       });
+    }
+  }
+
+  if (req.method === "POST") {
+    try {
+      const session = getSession(req);
+      if (!session?.username) return res.status(401).json({ error: "Please sign in again." });
+
+      const body = getJsonBody(req);
+      if (body.action !== "report-app-version") {
+        return res.status(400).json({ error: "Unknown account action." });
+      }
+      const version = typeof body.version === "string" ? body.version.trim() : "";
+      if (!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(version) || version.length > 64) {
+        return res.status(400).json({ error: "A valid application version is required." });
+      }
+
+      const users = await getUsers();
+      const user = users.find((item) =>
+        String(item.username || "").trim().toLowerCase() === String(session.username).trim().toLowerCase()
+      );
+      if (!user || (user.status && String(user.status).trim().toLowerCase() !== "active")) {
+        clearSession(res);
+        return res.status(401).json({ error: "The account is unavailable." });
+      }
+      const saved = await recordDesktopAppVersion(user.username, version);
+      if (!saved) return res.status(404).json({ error: "The account was not found." });
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(200).json({ success: true, version });
+    } catch (error) {
+      console.error("Desktop app version report failed:", error?.message || error);
+      return res.status(503).json({ error: "Could not save the app version right now." });
     }
   }
 
