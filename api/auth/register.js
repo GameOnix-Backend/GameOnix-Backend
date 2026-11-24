@@ -9,6 +9,7 @@ import {
 } from "../../lib/googleSheets.js";
 
 import { sendVerificationEmail } from "../../lib/mailer.js";
+import { checkRegistrationAttempt } from "../../lib/authSecurity.js";
 import {
   validateDisplayNamePolicy,
   validateUsernamePolicy,
@@ -36,11 +37,11 @@ export default async function handler(req, res) {
   setCors(req, res);
 
   if (handleOptions(req, res)) return;
-  if (await blockIfSitePaused(res)) return;
 
   if (req.method !== "POST") {
     return methodNotAllowed(res, ["POST", "OPTIONS"]);
   }
+  if (await blockIfSitePaused(res)) return;
 
   try {
     const {
@@ -55,6 +56,14 @@ export default async function handler(req, res) {
     const cleanUsername = String(username || "").trim();
     const cleanEmail = String(email || "").trim().toLowerCase();
 
+    const attempt = await checkRegistrationAttempt(req, {
+      email: cleanEmail,
+      username: cleanUsername,
+    });
+    if (attempt.blocked) {
+      res.setHeader("Retry-After", "3600");
+      return res.status(429).json({ error: attempt.reason });
+    }
     if (
       !cleanName ||
       !cleanUsername ||

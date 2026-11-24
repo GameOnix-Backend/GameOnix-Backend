@@ -24,6 +24,7 @@ import { sendAccountCreatedEmail } from "../../lib/mailer.js";
 import { handlePublicReviews } from "../../lib/reviewsApi.js";
 import { blockIfSitePaused } from "../../lib/siteAvailability.js";
 import { fetchReplica } from "../../lib/serviceFetch.js";
+import { getAuthAbuseReport, setSignupIpBlock } from "../../lib/authSecurity.js";
 import {
   validateDisplayNamePolicy,
   validateUsernamePolicy,
@@ -460,6 +461,15 @@ async function handleUsersAdmin(req, res) {
     const body = getJsonBody(req);
     const action = String(body.action || "").trim().toLowerCase();
 
+    if (action === "block-signup-ip" || action === "unblock-signup-ip") {
+      const result = await setSignupIpBlock(
+        body.ip,
+        action === "block-signup-ip",
+        body.reason,
+      );
+      return res.status(200).json(result);
+    }
+
     if (action === "create-user") {
       return handleCreateUser(req, res, body);
     }
@@ -476,7 +486,19 @@ async function handleUsersAdmin(req, res) {
   if (req.method === "GET") {
     await compactUserRows();
     const users = await getUsers();
-    return res.status(200).json({ users: users.map(adminUser) });
+    let authSecurity = { attempts: [], blockedIps: [], error: "" };
+    try {
+      authSecurity = await getAuthAbuseReport();
+    } catch (error) {
+      console.error("Auth security report failed:", error?.message || error);
+      authSecurity.error = "Attempt monitoring is temporarily unavailable.";
+    }
+    return res.status(200).json({
+      users: users.map(adminUser),
+      signupAbuseAttempts: authSecurity.attempts,
+      blockedSignupIps: authSecurity.blockedIps,
+      securityReportError: authSecurity.error || "",
+    });
   }
 
   if (req.method === "DELETE") {

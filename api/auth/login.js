@@ -2,6 +2,7 @@
 import bcrypt from "bcryptjs";
 import { getUsers, publicUser } from "../../lib/googleSheets.js";
 import { createSession } from "../../lib/auth.js";
+import { checkLoginAttempt, recordLoginAttempt } from "../../lib/authSecurity.js";
 import {
   setCors,
   handleOptions,
@@ -15,11 +16,11 @@ export default async function handler(req, res) {
   setCors(req, res);
 
   if (handleOptions(req, res)) return;
-  if (await blockIfSitePaused(res)) return;
 
   if (req.method !== "POST") {
     return methodNotAllowed(res, ["POST", "OPTIONS"]);
   }
+  if (await blockIfSitePaused(res)) return;
 
   let stage = "start";
 
@@ -35,6 +36,18 @@ export default async function handler(req, res) {
       });
     }
 
+    let loginRateLimited = false;
+    try {
+      loginRateLimited = await checkLoginAttempt(req);
+    } catch (securityError) {
+      console.error("Sign-in rate check failed; allowing normal authentication:", securityError?.message || securityError);
+    }
+    if (loginRateLimited) {
+      res.setHeader("Retry-After", "900");
+      return res.status(429).json({
+        error: "Too many unsuccessful sign-in attempts. Please wait 15 minutes and try again.",
+      });
+    }
     stage = "read Google Sheets";
 
     const users = await getUsers();
@@ -58,6 +71,11 @@ export default async function handler(req, res) {
       !user.password_hash ||
       !(await bcrypt.compare(String(password), String(user.password_hash)))
     ) {
+      try {
+        await recordLoginAttempt(req, { identity: cleanIdentity, success: false });
+      } catch (securityError) {
+        console.error("Could not record failed sign-in:", securityError?.message || securityError);
+      }
       return res.status(401).json({
         error: "Invalid email/username or password.",
       });
