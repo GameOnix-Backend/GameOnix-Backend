@@ -8,6 +8,7 @@ import {
 } from "../../lib/googleSheets.js";
 
 import { getSession } from "../../lib/auth.js";
+import { validateEmailPolicy } from "../../lib/namePolicy.js";
 
 import {
   sendEmailChangeConfirmationEmail,
@@ -114,6 +115,11 @@ export default async function handler(req, res) {
       return res.status(400).json({
         error: "There is no pending email change. Request a new code.",
       });
+    }
+
+    const emailPolicyError = validateEmailPolicy(pendingEmail);
+    if (emailPolicyError) {
+      return res.status(400).json({ error: emailPolicyError });
     }
 
     if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) {

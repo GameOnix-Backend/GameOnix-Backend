@@ -12,6 +12,7 @@ import { sendVerificationEmail } from "../../lib/mailer.js";
 import { checkRegistrationAttempt } from "../../lib/authSecurity.js";
 import {
   validateDisplayNamePolicy,
+  validateEmailPolicy,
   validateUsernamePolicy,
 } from "../../lib/namePolicy.js";
 
@@ -81,6 +82,9 @@ export default async function handler(req, res) {
         error: "Please enter a valid email address.",
       });
     }
+
+    const emailPolicyError = validateEmailPolicy(cleanEmail);
+    if (emailPolicyError) return res.status(400).json({ error: emailPolicyError });
 
     if (
       cleanUsername.length < 3 ||

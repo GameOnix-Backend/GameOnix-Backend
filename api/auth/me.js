@@ -27,6 +27,7 @@ import { fetchReplica } from "../../lib/serviceFetch.js";
 import { getAuthAbuseReport, setSignupIpBlock } from "../../lib/authSecurity.js";
 import {
   validateDisplayNamePolicy,
+  validateEmailPolicy,
   validateUsernamePolicy,
 } from "../../lib/namePolicy.js";
 
@@ -158,6 +159,8 @@ function validateUserUpdates(rawUpdates) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new Error("Enter a valid email address.");
     }
+    const emailPolicyError = validateEmailPolicy(email);
+    if (emailPolicyError) throw new Error(emailPolicyError);
     updates.email = email;
   }
 
@@ -204,6 +207,10 @@ function validateUserUpdates(rawUpdates) {
     }
     if (field === "pending_email" && normalized && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
       throw new Error("Pending email must be a valid email address or empty.");
+    }
+    if (field === "pending_email" && normalized) {
+      const emailPolicyError = validateEmailPolicy(normalized);
+      if (emailPolicyError) throw new Error(emailPolicyError);
     }
     updates[field] = normalized;
   }
@@ -284,6 +291,8 @@ async function handleCreateUser(req, res, body) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new Error("Enter a valid email address.");
     }
+    const emailPolicyError = validateEmailPolicy(email);
+    if (emailPolicyError) throw new Error(emailPolicyError);
 
     const name = normalizeRequiredText(body.name, "Display name", 80);
     const namePolicyError = validateDisplayNamePolicy(name);

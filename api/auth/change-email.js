@@ -10,6 +10,7 @@ import {
 import { getSession } from "../../lib/auth.js";
 
 import { sendEmailChangeVerificationEmail } from "../../lib/mailer.js";
+import { validateEmailPolicy } from "../../lib/namePolicy.js";
 
 import {
   setCors,
@@ -79,6 +80,8 @@ export default async function handler(req, res) {
         error: "Please enter a valid email address.",
       });
     }
+    const emailPolicyError = validateEmailPolicy(email);
+    if (emailPolicyError) return res.status(400).json({ error: emailPolicyError });
 
     const users = await getUsers();
 
