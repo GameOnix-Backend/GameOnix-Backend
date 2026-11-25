@@ -34,6 +34,8 @@ import {
 
 const DEFAULT_AVATAR =
   "https://raw.githubusercontent.com/mhdpstudio/GameOnix-Data-All/main/0.png";
+const OWNER_ACCOUNT_USERNAME = "mahmoud";
+const OWNER_ACCOUNT_EMAIL = "mahmoudpro963@gmail.com";
 import {
   setCors,
   handleOptions,
@@ -136,7 +138,7 @@ function normalizeRequiredText(value, label, maxLength) {
   return normalized;
 }
 
-function validateUserUpdates(rawUpdates) {
+function validateUserUpdates(rawUpdates, { allowProtectedOwnerName = false } = {}) {
   if (!rawUpdates || typeof rawUpdates !== "object" || Array.isArray(rawUpdates)) {
     throw new Error("User updates are required.");
   }
@@ -169,7 +171,7 @@ function validateUserUpdates(rawUpdates) {
 
   if (Object.hasOwn(rawUpdates, "name")) {
     const name = normalizeRequiredText(rawUpdates.name, "Name", 80);
-    const policyError = validateDisplayNamePolicy(name);
+    const policyError = validateDisplayNamePolicy(name, { allowProtectedOwnerName });
     if (policyError) throw new Error(policyError);
     updates.name = name;
   }
@@ -572,10 +574,8 @@ async function handleUsersAdmin(req, res) {
 
   const body = getJsonBody(req);
   let username;
-  let updates;
   try {
     username = normalizeRequiredText(body.username, "Username", 24);
-    updates = validateUserUpdates(body.updates);
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
@@ -586,6 +586,18 @@ async function handleUsersAdmin(req, res) {
   );
   if (!currentUser) {
     return res.status(404).json({ error: "User not found." });
+  }
+
+  const isOwnerAccount =
+    String(currentUser.username || "").trim().toLowerCase() === OWNER_ACCOUNT_USERNAME &&
+    String(currentUser.email || "").trim().toLowerCase() === OWNER_ACCOUNT_EMAIL;
+  let updates;
+  try {
+    updates = validateUserUpdates(body.updates, {
+      allowProtectedOwnerName: isOwnerAccount,
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 
   const nextUsername = String(updates.username ?? currentUser.username).trim().toLowerCase();
