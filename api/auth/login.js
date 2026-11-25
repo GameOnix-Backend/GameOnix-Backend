@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { getUsers, publicUser } from "../../lib/googleSheets.js";
 import { createSession } from "../../lib/auth.js";
 import { checkLoginAttempt, recordLoginAttempt } from "../../lib/authSecurity.js";
+import { isBlockedEmail } from "../../lib/namePolicy.js";
 import {
   setCors,
   handleOptions,
@@ -58,11 +59,14 @@ export default async function handler(req, res) {
 
     stage = "find user";
 
-    const user = users.find(
+    const matchedUser = users.find(
       (item) =>
         String(item.username || "").trim().toLowerCase() === cleanIdentity ||
         String(item.email || "").trim().toLowerCase() === cleanIdentity
     );
+    const user = matchedUser && !isBlockedEmail(matchedUser.email)
+      ? matchedUser
+      : null;
 
     stage = "check password";
 

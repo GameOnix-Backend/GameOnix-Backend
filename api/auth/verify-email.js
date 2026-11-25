@@ -8,6 +8,7 @@ import {
 } from "../../lib/googleSheets.js";
 
 import { createSession } from "../../lib/auth.js";
+import { isBlockedEmail } from "../../lib/namePolicy.js";
 
 import {
   setCors,
@@ -57,6 +58,12 @@ export default async function handler(req, res) {
     if (!cleanEmail || !cleanCode) {
       return res.status(400).json({
         error: "Email and verification code are required.",
+      });
+    }
+
+    if (isBlockedEmail(cleanEmail)) {
+      return res.status(400).json({
+        error: "This email address is not allowed on GameOnix.",
       });
     }
 

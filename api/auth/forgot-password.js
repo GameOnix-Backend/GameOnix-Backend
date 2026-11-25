@@ -2,6 +2,7 @@ import { randomBytes, randomInt, createHash } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { getUsers, updateUser } from "../../lib/googleSheets.js";
 import { sendPasswordResetEmail } from "../../lib/mailer.js";
+import { isBlockedEmail } from "../../lib/namePolicy.js";
 import {
   setCors,
   handleOptions,
@@ -61,6 +62,12 @@ export default async function handler(req, res) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return res.status(400).json({
         error: "Enter a valid email address.",
+      });
+    }
+
+    if (isBlockedEmail(cleanEmail)) {
+      return res.status(200).json({
+        message: "If an eligible account exists, a reset code will be sent to its email.",
       });
     }
 
