@@ -80,6 +80,18 @@ const ADMIN_TOOL_ACTIONS = new Set([
   "reject-purchase-request",
 ]);
 
+async function shouldRetryAdminReplica(response) {
+  if (response.status === 403) {
+    const body = await response.json().catch(() => ({}));
+    return body.error === "Admin access is required.";
+  }
+  if (response.ok && response.status === 200) {
+    const body = await response.json().catch(() => ({}));
+    return body.canSend === false;
+  }
+  return false;
+}
+
 function isValidUsersAdminToken(req) {
   const expected = process.env.GAMEONIX_USERS_ADMIN_TOKEN?.trim();
   const authorization = req.headers.authorization || "";
@@ -751,6 +763,7 @@ async function handleAdminTools(req, res) {
     accessUrl.searchParams.set("username", adminUsername);
     const accessResponse = await fetchReplica("fav", accessUrl, {
       headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+      retryOnResponse: shouldRetryAdminReplica,
       signal: AbortSignal.timeout(8000),
     });
     const accessData = await accessResponse.json().catch(() => ({}));
@@ -775,6 +788,7 @@ async function handleAdminTools(req, res) {
       ...(actionBody ? { "Content-Type": "application/json" } : {}),
     },
     ...(actionBody ? { body: JSON.stringify(actionBody) } : {}),
+    retryOnResponse: shouldRetryAdminReplica,
     signal: AbortSignal.timeout(actionBody?.action === "publish-game-update" ? 9000 : 8000),
   });
   const data = await response.json().catch(() => ({}));
