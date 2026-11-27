@@ -56,9 +56,9 @@ const USER_EDITABLE_FIELDS = new Set([
   "pending_email",
 ]);
 const WALLET_ADMIN_ACTIONS_URL =
-  "https://gameonixfav.vercel.app/api/auth/wallet-notifications";
+  "https://gameonix-fav-2.vercel.app/api/auth/wallet-notifications";
 const WALLET_PURCHASE_ADMIN_URL =
-  "https://gameonixfav.vercel.app/api/auth/wallet-purchase";
+  "https://gameonix-fav-2.vercel.app/api/auth/wallet-purchase";
 const ADMIN_TOOL_RESOURCES = new Set([
   "game-requests",
   "purchase-requests",
@@ -952,8 +952,9 @@ export default async function handler(req, res) {
     if (req.method !== "GET") return methodNotAllowed(res, ["GET", "OPTIONS"]);
     try {
       const siteControl = await getSiteControl();
-      // Let Vercel's edge cache absorb the browser's periodic status checks.
-      res.setHeader("Cache-Control", "public, s-maxage=15, stale-while-revalidate=60");
+      // This endpoint is read cross-origin. Shared caching can serve a cached
+      // response without the requesting origin's CORS headers.
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
       return res.status(200).json(siteControl);
     } catch (error) {
       console.error("Site status request failed:", error.message);
