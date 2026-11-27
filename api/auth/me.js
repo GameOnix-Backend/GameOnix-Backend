@@ -946,21 +946,29 @@ async function handleAdminTools(req, res) {
 
 export default async function handler(req, res) {
   setCors(req, res);
-  if (handleOptions(req, res)) return;
 
   if (req.query?.siteStatus === "1") {
+    // Site status is public and shared by every visitor. A wildcard CORS
+    // response lets Vercel cache it safely without caching one origin's headers.
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.removeHeader("Access-Control-Allow-Credentials");
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(204).end();
+    }
     if (req.method !== "GET") return methodNotAllowed(res, ["GET", "OPTIONS"]);
     try {
       const siteControl = await getSiteControl();
-      // This endpoint is read cross-origin. Shared caching can serve a cached
-      // response without the requesting origin's CORS headers.
-      res.setHeader("Cache-Control", "private, no-store, max-age=0");
+      res.setHeader("Cache-Control", "public, s-maxage=15, stale-while-revalidate=60");
       return res.status(200).json(siteControl);
     } catch (error) {
       console.error("Site status request failed:", error.message);
       return res.status(503).json({ error: "Website status is temporarily unavailable." });
     }
   }
+
+  if (handleOptions(req, res)) return;
 
   if (req.query?.admin === "tools") {
     if (!["GET", "POST"].includes(req.method)) {
